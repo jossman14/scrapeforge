@@ -1,0 +1,139 @@
+x-common-env: &common-env
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/scrapeforge}
+  PLAYWRIGHT_URL: ${PLAYWRIGHT_URL:-http://playwright:3000/render}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  api:
+    build:
+      context: ./api
+    image: scrapeforge-api:latest
+    mem_limit: 256m
+    cpus: '0.5'
+    ports:
+      - "3002:3002"
+    environment:
+      <<: *common-env
+      PORT: ${PORT:-3002}
+      HOST: ${HOST:-0.0.0.0}
+      API_AUTH_KEY: ${API_AUTH_KEY:-changeme_generate_a_real_key}
+      WORKERS: ${WORKERS:-2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+      - api
+    logging: *logging
+
+  worker:
+    build:
+      context: ./worker
+    image: scrapeforge-worker:latest
+    mem_limit: 256m
+    cpus: '0.5'
+    environment:
+      <<: *common-env
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PROXY_SERVER: ${PROXY_SERVER:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r = redis.from_url('redis://redis:6379/0'); r.ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - backend
+    logging: *logging
+
+  playwright:
+    build:
+      context: ./playwright-service
+    image: scrapeforge-playwright:latest
+    mem_limit: 512m
+    cpus: '0.5'
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - backend
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    mem_limit: 128m
+    cpus: '0.25'
+    command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    logging: *logging
+
+  postgres:
+    image: postgres:16-alpine
+    mem_limit: 256m
+    cpus: '0.5'
+    environment:
+      POSTGRES_DB: scrapeforge
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d scrapeforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    logging: *logging
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  backend:
+    internal: true
+  api:

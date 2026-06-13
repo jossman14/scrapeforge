@@ -1,0 +1,15 @@
+{
+  "name": "scrapeforge-playwright",
+  "version": "0.1.0",
+  "description": "Headless Chromium render service for ScrapeForge",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.48.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
