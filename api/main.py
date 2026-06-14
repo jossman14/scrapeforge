@@ -1,48 +1,122 @@
+"""ScrapeForge API — FastAPI entry point.
+
+Lifespan: initializes DB connection pool and Redis on startup.
+Routes: /health, /ready, /metrics, and all /v1/* endpoints.
+"""
+
+from __future__ import annotations
+
+import logging
 import os
+from contextlib import asynccontextmanager
+
+import structlog
 import asyncpg
 import redis.asyncio as aioredis
 from fastapi import FastAPI
-from pydantic_settings import BaseSettings
+from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
+
+from api.db.session import engine
+from api.deps import get_redis_pool
+from api.routers import scrape, crawl, map as map_router, extract, batch, jobs
+
+# --- Structured logging setup ---
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer(),
+    ],
+    wrapper_class=structlog.BoundLogger,
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+)
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
+log = logging.getLogger(__name__)
 
 
-class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/scrapeforge"
-    redis_url: str = "redis://redis:6379/0"
-    log_level: str = "INFO"
-
-    class Config:
-        env_file = ".env"
-
-
-settings = Settings()
-app = FastAPI(title="ScrapeForge API", version="0.1.0")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
-@app.get("/ready")
-async def ready():
-    errors = {}
-
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log.info("startup: initializing connections")
+    # Warm up DB pool by running a simple query
     try:
-        db_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
-        conn = await asyncpg.connect(db_url, timeout=5)
-        await conn.close()
-    except Exception as e:
-        errors["database"] = str(e)
+        async with engine.connect() as conn:
+            await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+        log.info("startup: database pool ready")
+    except Exception as exc:
+        log.error("startup: database connection failed: %s", exc)
 
+    # Warm up Redis
     try:
-        r = aioredis.from_url(settings.redis_url, socket_timeout=5)
+        r = get_redis_pool()
         await r.ping()
-        await r.aclose()
-    except Exception as e:
-        errors["redis"] = str(e)
+        log.info("startup: redis ready")
+    except Exception as exc:
+        log.error("startup: redis connection failed: %s", exc)
+
+    yield
+
+    log.info("shutdown: closing connections")
+    await engine.dispose()
+    r = get_redis_pool()
+    await r.aclose()
+
+
+app = FastAPI(
+    title="ScrapeForge API",
+    description="Self-hosted web-data API powered by Scrapling. Firecrawl-compatible.",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+# Prometheus metrics
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+# Routers
+app.include_router(scrape.router)
+app.include_router(crawl.router)
+app.include_router(map_router.router)
+app.include_router(extract.router)
+app.include_router(batch.router)
+app.include_router(jobs.router)
+
+
+@app.get("/health", tags=["ops"])
+async def health():
+    return {"status": "ok", "service": "scrapeforge-api"}
+
+
+@app.get("/ready", tags=["ops"])
+async def ready():
+    errors: dict = {}
+
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+    except Exception as exc:
+        errors["database"] = str(exc)
+
+    try:
+        r = get_redis_pool()
+        await r.ping()
+    except Exception as exc:
+        errors["redis"] = str(exc)
 
     if errors:
         from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=503, content={"status": "not_ready", "errors": errors})
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "errors": errors},
+        )
 
     return {"status": "ready"}
