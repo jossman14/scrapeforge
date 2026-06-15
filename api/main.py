@@ -9,17 +9,20 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
 import asyncpg
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from api.db.session import engine
 from api.deps import get_redis_pool
 from api.routers import scrape, crawl, map as map_router, extract, batch, jobs
+from api.routers import admin
 
 # --- Structured logging setup ---
 structlog.configure(
@@ -82,6 +85,11 @@ app.add_middleware(
 # Prometheus metrics
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
+# Static files for admin dashboard
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
 # Routers
 app.include_router(scrape.router)
 app.include_router(crawl.router)
@@ -89,6 +97,7 @@ app.include_router(map_router.router)
 app.include_router(extract.router)
 app.include_router(batch.router)
 app.include_router(jobs.router)
+app.include_router(admin.router)
 
 
 @app.get("/health", tags=["ops"])

@@ -25,6 +25,7 @@ services:
       PORT: ${PORT:-3002}
       HOST: ${HOST:-0.0.0.0}
       API_AUTH_KEY: ${API_AUTH_KEY:-changeme_generate_a_real_key}
+      ADMIN_KEY: ${ADMIN_KEY:-changeme_set_a_strong_admin_key}
       WORKERS: ${WORKERS:-2}
     depends_on:
       postgres:

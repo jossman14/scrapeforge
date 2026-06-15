@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScrapeForge — Admin</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Top bar ──────────────────────────────────────── -->
+  <header class="topbar">
+    <a class="topbar-brand" href="/admin">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+      ScrapeForge Admin
+    </a>
+    <div class="topbar-meta">
+      <span class="pulse-ring" id="refresh-indicator">
+        <span class="pulse-dot" id="pulse-dot"></span>
+        <span id="last-updated">loading…</span>
+      </span>
+      <span class="uptime-label" id="uptime-label">uptime —</span>
+      <a href="/admin/logout" class="btn btn-ghost btn-sm">Sign out</a>
+    </div>
+  </header>
+
+  <!-- ── Main ─────────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- System Health -->
+    <section class="section">
+      <div class="section-header">
+        <h2>System Health</h2>
+      </div>
+      <div class="card-grid" id="health-grid">
+        <div class="stat-card skeleton-card">
+          <div class="card-label">Redis</div>
+          <div class="card-value">—</div>
+          <div class="card-sub">checking…</div>
+        </div>
+        <div class="stat-card skeleton-card">
+          <div class="card-label">Postgres</div>
+          <div class="card-value">—</div>
+          <div class="card-sub">checking…</div>
+        </div>
+        <div class="stat-card skeleton-card">
+          <div class="card-label">Workers</div>
+          <div class="card-value">—</div>
+          <div class="card-sub">checking…</div>
+        </div>
+        <div class="stat-card skeleton-card">
+          <div class="card-label">API Uptime</div>
+          <div class="card-value">—</div>
+          <div class="card-sub">checking…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Queue Stats -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Job Queue</h2>
+      </div>
+      <div class="card-grid" id="queue-grid">
+        <div class="stat-card card-blue skeleton-card"><div class="card-label">Queued</div><div class="card-value">—</div></div>
+        <div class="stat-card card-info skeleton-card"><div class="card-label">Running</div><div class="card-value">—</div></div>
+        <div class="stat-card card-ok   skeleton-card"><div class="card-label">Completed (24h)</div><div class="card-value">—</div></div>
+        <div class="stat-card card-error skeleton-card"><div class="card-label">Failed (24h)</div><div class="card-value">—</div></div>
+        <div class="stat-card skeleton-card"><div class="card-label">Avg Duration</div><div class="card-value">—</div></div>
+        <div class="stat-card skeleton-card"><div class="card-label">Jobs / min</div><div class="card-value">—</div></div>
+      </div>
+    </section>
+
+    <!-- Recent Jobs -->
+    <section class="section">
+      <div class="section-header">
+        <h2>Recent Jobs</h2>
+        <span class="badge badge-gray" id="job-count-badge">20</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="jobs-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Type</th>
+              <th class="hide-mobile">URL</th>
+              <th class="hide-mobile">Duration</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="jobs-tbody">
+            <tr class="skeleton-row"><td>&nbsp;</td><td>&nbsp;</td><td class="hide-mobile">&nbsp;</td><td class="hide-mobile">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+            <tr class="skeleton-row"><td>&nbsp;</td><td>&nbsp;</td><td class="hide-mobile">&nbsp;</td><td class="hide-mobile">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+            <tr class="skeleton-row"><td>&nbsp;</td><td>&nbsp;</td><td class="hide-mobile">&nbsp;</td><td class="hide-mobile">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+            <tr class="skeleton-row"><td>&nbsp;</td><td>&nbsp;</td><td class="hide-mobile">&nbsp;</td><td class="hide-mobile">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+            <tr class="skeleton-row"><td>&nbsp;</td><td>&nbsp;</td><td class="hide-mobile">&nbsp;</td><td class="hide-mobile">&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- API Keys -->
+    <section class="section">
+      <div class="section-header">
+        <h2>API Keys</h2>
+        <button class="btn btn-primary btn-sm" onclick="openCreateKeyModal()">+ New Key</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="keys-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th class="hide-mobile">Rate Limit</th>
+              <th class="hide-mobile">Last Used</th>
+              <th class="hide-mobile">Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="keys-tbody">
+            <tr class="skeleton-row"><td>&nbsp;</td><td class="hide-mobile">&nbsp;</td><td class="hide-mobile">&nbsp;</td><td class="hide-mobile">&nbsp;</td><td>&nbsp;</td></tr>
+            <tr class="skeleton-row"><td>&nbsp;</td><td class="hide-mobile">&nbsp;</td><td class="hide-mobile">&nbsp;</td><td class="hide-mobile">&nbsp;</td><td>&nbsp;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── Toast stack ───────────────────────────────────── -->
+<div class="toast-stack" id="toast-stack"></div>
+
+<!-- ── Job Detail Modal ──────────────────────────────── -->
+<div class="modal-overlay" id="modal-job" hidden>
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3>Job Detail</h3>
+      <button class="btn-close" onclick="closeModal('modal-job')" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="modal-job-body">
+      <p class="text-muted text-sm">Loading…</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-job')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Create Key Modal ──────────────────────────────── -->
+<div class="modal-overlay" id="modal-create-key" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3>New API Key</h3>
+      <button class="btn-close" onclick="closeModal('modal-create-key')" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="key-name">Name <span class="text-dim">(optional)</span></label>
+        <input class="input" type="text" id="key-name" placeholder="e.g. Production app">
+      </div>
+      <div class="form-group">
+        <label for="key-rate">Rate limit <span class="text-dim">(requests / minute)</span></label>
+        <input class="input" type="number" id="key-rate" value="60" min="1" max="10000">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-create-key')">Cancel</button>
+      <button class="btn btn-primary" id="btn-create-key" onclick="createKey()">Create Key</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── New Key Reveal Modal ──────────────────────────── -->
+<div class="modal-overlay" id="modal-key-reveal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3>API Key Created</h3>
+      <button class="btn-close" onclick="closeModal('modal-key-reveal')" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="key-notice">
+        Copy this key now — it will not be shown again.
+      </div>
+      <div>
+        <label class="form-group" style="margin-bottom:.35rem;display:block;font-size:.75rem;font-weight:600;color:var(--text-muted)">Your new API key</label>
+        <div class="key-reveal font-mono" id="new-key-value"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="copyNewKey()">Copy to clipboard</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal('modal-key-reveal')">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Confirm Revoke Modal ──────────────────────────── -->
+<div class="modal-overlay" id="modal-revoke" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Revoke API Key</h3>
+      <button class="btn-close" onclick="closeModal('modal-revoke')" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to revoke <strong id="revoke-key-name"></strong>? This action cannot be undone.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-revoke')">Cancel</button>
+      <button class="btn btn-danger" id="btn-confirm-revoke" onclick="confirmRevoke()">Revoke Key</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ── State ─────────────────────────────────────────── */
+  let _revokeTarget = null;
+  let _newKeyValue  = '';
+  let _pollTimer    = null;
+  let _fetchError   = false;
+
+  /* ── Utilities ─────────────────────────────────────── */
+  function fmtDur(s) {
+    if (s === null || s === undefined) return '—';
+    if (s < 60) return s.toFixed(1) + 's';
+    return Math.floor(s / 60) + 'm ' + (s % 60).toFixed(0) + 's';
+  }
+
+  function fmtUptime(s) {
+    if (!s && s !== 0) return '—';
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m ${Math.floor(s % 60)}s`;
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = (now - d) / 1000;
+    if (diff < 60)       return 'just now';
+    if (diff < 3600)     return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400)    return Math.floor(diff / 3600) + 'h ago';
+    return d.toLocaleDateString();
+  }
+
+  function statusBadge(s) {
+    const map = {
+      completed: 'badge-green',
+      running:   'badge-blue',
+      queued:    'badge-indigo',
+      failed:    'badge-red',
+      cancelled: 'badge-gray',
+    };
+    return `<span class="badge ${map[s] || 'badge-gray'}">${s}</span>`;
+  }
+
+  function typeBadge(t) {
+    return `<span class="badge badge-gray">${t}</span>`;
+  }
+
+  function toast(msg, ok = true) {
+    const el = document.createElement('div');
+    el.className = 'toast ' + (ok ? 'toast-ok' : 'toast-err');
+    el.textContent = msg;
+    document.getElementById('toast-stack').appendChild(el);
+    setTimeout(() => el.remove(), 3500);
+  }
+
+  /* ── Modal helpers ─────────────────────────────────── */
+  function openModal(id) {
+    document.getElementById(id).hidden = false;
+    document.addEventListener('keydown', escapeHandler);
+  }
+  function closeModal(id) {
+    document.getElementById(id).hidden = true;
+    document.removeEventListener('keydown', escapeHandler);
+  }
+  function escapeHandler(e) {
+    if (e.key === 'Escape') {
+      ['modal-job','modal-create-key','modal-key-reveal','modal-revoke'].forEach(closeModal);
+    }
+  }
+  // Close on backdrop click
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target === el) closeModal(el.id);
+    });
+  });
+
+  /* ── Fetch with error handling ─────────────────────── */
+  async function apiFetch(url, opts = {}) {
+    const res = await fetch(url, opts);
+    if (res.status === 401) { location.href = '/admin/login'; throw new Error('401'); }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  /* ── Health & Stats ────────────────────────────────── */
+  function renderHealth(data) {
+    const { health, queue } = data;
+
+    // Health cards
+    const hg = document.getElementById('health-grid');
+    const rOk = health.redis.connected;
+    const pOk = health.postgres.connected;
+    hg.innerHTML = `
+      <div class="stat-card ${rOk ? 'card-ok' : 'card-error'}">
+        <div class="card-label">Redis</div>
+        <div class="card-value" style="font-size:1.1rem">
+          <span class="dot ${rOk ? 'dot-green' : 'dot-red'}"></span>
+          ${rOk ? 'Connected' : 'Down'}
+        </div>
+        <div class="card-sub">${health.redis.used_memory || '—'}</div>
+      </div>
+      <div class="stat-card ${pOk ? 'card-ok' : 'card-error'}">
+        <div class="card-label">Postgres</div>
+        <div class="card-value" style="font-size:1.1rem">
+          <span class="dot ${pOk ? 'dot-green' : 'dot-red'}"></span>
+          ${pOk ? 'Connected' : 'Down'}
+        </div>
+        <div class="card-sub">database</div>
+      </div>
+      <div class="stat-card ${health.workers > 0 ? 'card-ok' : 'card-warn'}">
+        <div class="card-label">Workers</div>
+        <div class="card-value">${health.workers}</div>
+        <div class="card-sub">${health.workers === 0 ? 'no heartbeat detected' : 'active'}</div>
+      </div>
+      <div class="stat-card card-info">
+        <div class="card-label">API Uptime</div>
+        <div class="card-value" style="font-size:1.1rem">${fmtUptime(health.uptime_seconds)}</div>
+        <div class="card-sub">since last restart</div>
+      </div>
+    `;
+
+    // Queue cards
+    const qg = document.getElementById('queue-grid');
+    const avgDur = queue.avg_duration_seconds !== null ? fmtDur(queue.avg_duration_seconds) : '—';
+    const jpm = queue.jobs_per_minute !== null ? queue.jobs_per_minute.toFixed(2) : '—';
+    qg.innerHTML = `
+      <div class="stat-card card-blue">
+        <div class="card-label">Queued</div>
+        <div class="card-value">${queue.queued}</div>
+      </div>
+      <div class="stat-card card-info">
+        <div class="card-label">Running</div>
+        <div class="card-value">${queue.running}</div>
+      </div>
+      <div class="stat-card card-ok">
+        <div class="card-label">Completed (24h)</div>
+        <div class="card-value">${queue.completed_24h}</div>
+      </div>
+      <div class="stat-card ${queue.failed_24h > 0 ? 'card-error' : ''}">
+        <div class="card-label">Failed (24h)</div>
+        <div class="card-value">${queue.failed_24h}</div>
+      </div>
+      <div class="stat-card">
+        <div class="card-label">Avg Duration</div>
+        <div class="card-value" style="font-size:1.25rem">${avgDur}</div>
+        <div class="card-sub">completed jobs</div>
+      </div>
+      <div class="stat-card">
+        <div class="card-label">Jobs / min</div>
+        <div class="card-value" style="font-size:1.25rem">${jpm}</div>
+        <div class="card-sub">last 60 minutes</div>
+      </div>
+    `;
+
+    // Update uptime label in topbar
+    document.getElementById('uptime-label').textContent = 'uptime ' + fmtUptime(health.uptime_seconds);
+  }
+
+  /* ── Jobs table ────────────────────────────────────── */
+  function renderJobs(jobs) {
+    const tbody = document.getElementById('jobs-tbody');
+    document.getElementById('job-count-badge').textContent = jobs.length;
+
+    if (!jobs.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="state-box">
+        <p>No jobs found.</p>
+      </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = jobs.map(j => `
+      <tr>
+        <td>${statusBadge(j.status)}</td>
+        <td>${typeBadge(j.type)}</td>
+        <td class="col-url hide-mobile" title="${j.url || ''}">${j.url || '<span class="text-dim">—</span>'}</td>
+        <td class="hide-mobile">${j.duration_seconds !== null ? fmtDur(j.duration_seconds) : '—'}</td>
+        <td class="text-muted text-sm">${fmtDate(j.created_at)}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" onclick="showJobDetail(${JSON.stringify(j)})">View</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  /* ── Keys table ────────────────────────────────────── */
+  function renderKeys(keys) {
+    const tbody = document.getElementById('keys-tbody');
+
+    if (!keys.length) {
+      tbody.innerHTML = `<tr><td colspan="5" class="state-box">
+        <p>No active API keys.</p>
+      </td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = keys.map(k => `
+      <tr>
+        <td><strong>${escHtml(k.name)}</strong><br><span class="col-mono text-dim">${k.id.slice(0,8)}…</span></td>
+        <td class="hide-mobile">${k.rate_limit_per_minute} req/min</td>
+        <td class="text-muted text-sm hide-mobile">${k.last_used_at ? fmtDate(k.last_used_at) : '<span class="text-dim">Never</span>'}</td>
+        <td class="text-muted text-sm hide-mobile">${fmtDate(k.created_at)}</td>
+        <td>
+          <button class="btn btn-danger btn-sm" onclick="openRevokeModal('${k.id}', '${escHtml(k.name)}')">Revoke</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── Poll loop ─────────────────────────────────────── */
+  async function poll() {
+    try {
+      const [stats, jobs, keys] = await Promise.all([
+        apiFetch('/admin/api/stats'),
+        apiFetch('/admin/api/jobs'),
+        apiFetch('/admin/api/keys'),
+      ]);
+
+      renderHealth(stats);
+      renderJobs(jobs);
+      renderKeys(keys);
+
+      const dot = document.getElementById('pulse-dot');
+      dot.classList.remove('stale');
+      document.getElementById('last-updated').textContent =
+        'Updated ' + new Date().toLocaleTimeString();
+      _fetchError = false;
+    } catch (err) {
+      if (err.message === '401') return;
+      if (!_fetchError) {
+        toast('Failed to refresh data — retrying…', false);
+        _fetchError = true;
+        document.getElementById('pulse-dot').classList.add('stale');
+        document.getElementById('last-updated').textContent = 'Refresh failed';
+      }
+    }
+  }
+
+  function startPolling() {
+    poll();
+    _pollTimer = setInterval(poll, 5000);
+  }
+
+  /* ── Job detail modal ──────────────────────────────── */
+  function showJobDetail(job) {
+    const body = document.getElementById('modal-job-body');
+    const dur = job.duration_seconds !== null ? fmtDur(job.duration_seconds) : '—';
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
+        <div class="form-group">
+          <label style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px">Status</label>
+          <div style="margin-top:.15rem">${statusBadge(job.status)}</div>
+        </div>
+        <div class="form-group">
+          <label style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px">Type</label>
+          <div style="margin-top:.15rem">${typeBadge(job.type)}</div>
+        </div>
+        <div class="form-group">
+          <label style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px">Duration</label>
+          <span class="text-sm">${dur}</span>
+        </div>
+        <div class="form-group">
+          <label style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px">Created</label>
+          <span class="text-sm">${job.created_at ? new Date(job.created_at).toLocaleString() : '—'}</span>
+        </div>
+      </div>
+      ${job.url ? `
+      <div class="form-group">
+        <label style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim)">URL</label>
+        <div class="detail-pre">${escHtml(job.url)}</div>
+      </div>` : ''}
+      <div class="form-group">
+        <label style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim)">Job ID</label>
+        <div class="font-mono text-sm" style="color:var(--text-muted)">${job.id}</div>
+      </div>
+      ${job.error_message ? `
+      <div class="form-group">
+        <label style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;color:var(--red)">Error</label>
+        <div class="detail-pre" style="color:var(--red)">${escHtml(job.error_message)}</div>
+      </div>` : ''}
+    `;
+    openModal('modal-job');
+  }
+
+  /* ── Create key ────────────────────────────────────── */
+  function openCreateKeyModal() {
+    document.getElementById('key-name').value = '';
+    document.getElementById('key-rate').value = '60';
+    openModal('modal-create-key');
+    setTimeout(() => document.getElementById('key-name').focus(), 50);
+  }
+
+  async function createKey() {
+    const btn = document.getElementById('btn-create-key');
+    const name = document.getElementById('key-name').value.trim();
+    const rate = parseInt(document.getElementById('key-rate').value, 10) || 60;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Creating…';
+
+    try {
+      const data = await apiFetch('/admin/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, rate_limit_per_minute: rate }),
+      });
+
+      closeModal('modal-create-key');
+      _newKeyValue = data.key;
+      document.getElementById('new-key-value').textContent = data.key;
+      openModal('modal-key-reveal');
+      toast('API key created.', true);
+      poll();
+    } catch (err) {
+      toast('Failed to create key: ' + err.message, false);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Key';
+    }
+  }
+
+  function copyNewKey() {
+    navigator.clipboard.writeText(_newKeyValue).then(() => {
+      toast('Copied to clipboard.', true);
+    }).catch(() => {
+      toast('Could not copy automatically.', false);
+    });
+  }
+
+  /* ── Revoke key ────────────────────────────────────── */
+  function openRevokeModal(id, name) {
+    _revokeTarget = id;
+    document.getElementById('revoke-key-name').textContent = name;
+    openModal('modal-revoke');
+  }
+
+  async function confirmRevoke() {
+    if (!_revokeTarget) return;
+    const btn = document.getElementById('btn-confirm-revoke');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Revoking…';
+
+    try {
+      await apiFetch('/admin/api/keys/' + _revokeTarget, { method: 'DELETE' });
+      closeModal('modal-revoke');
+      toast('API key revoked.', true);
+      poll();
+    } catch (err) {
+      toast('Failed to revoke key: ' + err.message, false);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Revoke Key';
+      _revokeTarget = null;
+    }
+  }
+
+  /* ── Start ─────────────────────────────────────────── */
+  startPolling();
+</script>
+</body>
+</html>

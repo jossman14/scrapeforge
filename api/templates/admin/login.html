@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScrapeForge — Admin Login</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+      ScrapeForge
+    </div>
+
+    <div class="login-title">
+      <h1>Admin Access</h1>
+      <p>Enter your admin key to continue.</p>
+    </div>
+
+    {% if error %}
+    <div class="form-error" style="margin-bottom:.9rem">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/admin/login" class="login-form">
+      <div class="form-group">
+        <label for="admin_key">Admin Key</label>
+        <input
+          class="input"
+          type="password"
+          id="admin_key"
+          name="admin_key"
+          placeholder="sf_…"
+          autocomplete="current-password"
+          required
+          autofocus
+        >
+      </div>
+      <button type="submit" class="btn btn-primary login-submit">
+        Sign in
+      </button>
+    </form>
+  </div>
+</div>
+</body>
+</html>
