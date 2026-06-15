@@ -21,6 +21,7 @@ from api.engine.cache import get_cached, set_cached
 from api.engine.convert import extract_links, html_to_markdown
 from api.engine.fetch import FetchOptions, fetch_with_fallback
 from api.engine.robots import is_allowed
+from api.engine.url_validator import validate_url
 
 import redis.asyncio as aioredis
 
@@ -59,6 +60,10 @@ async def scrape(
     redis: aioredis.Redis = Depends(get_redis),
 ) -> ScrapeResponse:
     url = str(body.url)
+    try:
+        await validate_url(url)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     # Cache check
     if body.cache_ttl > 0:

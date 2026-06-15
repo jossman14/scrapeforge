@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth.rate_limit import check_rate_limit
 from api.db.models import ApiKey
 from api.db.session import get_session
+from api.engine.url_validator import validate_url
 from api.queue.producer import enqueue_job
 
 log = logging.getLogger(__name__)
@@ -44,6 +45,14 @@ async def batch_scrape(
     session: AsyncSession = Depends(get_session),
 ) -> BatchScrapeResponse:
     urls = [str(u) for u in body.urls]
+    for u in urls:
+        try:
+            await validate_url(u)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid URL '{u}': {exc}",
+            )
     options = {
         "urls": urls,
         "formats": body.formats,

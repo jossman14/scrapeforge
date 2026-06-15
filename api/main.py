@@ -112,14 +112,14 @@ async def ready():
     try:
         async with engine.connect() as conn:
             await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
-    except Exception as exc:
-        errors["database"] = str(exc)
+    except Exception:
+        errors["database"] = "unavailable"
 
     try:
         r = get_redis_pool()
         await r.ping()
-    except Exception as exc:
-        errors["redis"] = str(exc)
+    except Exception:
+        errors["redis"] = "unavailable"
 
     if errors:
         from fastapi.responses import JSONResponse

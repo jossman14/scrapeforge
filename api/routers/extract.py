@@ -22,6 +22,7 @@ from api.db.session import get_session
 from api.deps import get_redis
 from api.engine.fetch import FetchOptions, fetch_with_fallback
 from api.engine.convert import html_to_markdown
+from api.engine.url_validator import validate_url
 
 import redis.asyncio as aioredis
 
@@ -62,6 +63,10 @@ async def extract(
         )
 
     url = str(body.url)
+    try:
+        await validate_url(url)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     # Fetch the page
     result = await fetch_with_fallback(url, FetchOptions(timeout=30))
@@ -118,5 +123,5 @@ async def _llm_extract(content: str, schema: dict, prompt: str) -> Any:
         log.error("llm_extract_error error=%s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"LLM extraction failed: {exc}",
+            detail="LLM extraction failed. Check server logs for details.",
         )

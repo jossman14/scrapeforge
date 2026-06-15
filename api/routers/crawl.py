@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth.rate_limit import check_rate_limit
 from api.db.models import ApiKey
 from api.db.session import get_session
+from api.engine.url_validator import validate_url
 from api.queue.producer import enqueue_job
 
 log = logging.getLogger(__name__)
@@ -46,6 +47,11 @@ async def crawl(
     api_key: ApiKey = Depends(check_rate_limit),
     session: AsyncSession = Depends(get_session),
 ) -> CrawlResponse:
+    try:
+        await validate_url(str(body.url))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
     options = {
         "max_depth": body.max_depth,
         "limit": body.limit,

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from urllib.parse import urljoin, urlparse
-from xml.etree import ElementTree
+import defusedxml.ElementTree as ElementTree
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,6 +17,7 @@ from api.auth.rate_limit import check_rate_limit
 from api.db.models import ApiKey
 from api.engine.fetch import FetchOptions, _fetch_static
 from api.engine.convert import extract_links
+from api.engine.url_validator import validate_url
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +44,10 @@ async def map_site(
     api_key: ApiKey = Depends(check_rate_limit),
 ) -> MapResponse:
     seed_url = str(body.url)
+    try:
+        await validate_url(seed_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     collected: set[str] = set()
 
     # Step 1: Parse sitemap.xml

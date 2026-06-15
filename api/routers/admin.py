@@ -300,7 +300,7 @@ async def api_keys_create(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     raw_key = "sf_" + secrets.token_hex(32)
-    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    key_hash = hash_key(raw_key)
 
     new_key = ApiKey(
         key_hash=key_hash,
