@@ -1,4 +1,4 @@
-.PHONY: up down test logs build migrate shell
+.PHONY: up down test test-unit test-integration logs build migrate shell
 
 up:
 	docker compose up -d
@@ -12,8 +12,14 @@ build:
 migrate:
 	docker compose run --rm api sh -c "cd /app/api && python -m alembic upgrade head"
 
+test-unit:
+	pytest tests/unit/ -v -m unit
+
+test-integration:
+	pytest tests/integration/ -v -m integration
+
 test:
-	pytest tests/ -v
+	make test-unit && make test-integration
 
 test-docker:
 	docker compose run --rm api pytest /app/tests/ -v

@@ -69,7 +69,7 @@ async def login_page(request: Request):
 
 @router.post("/login")
 async def login_submit(request: Request, admin_key: str = Form(...)):
-    if not ADMIN_KEY or admin_key != ADMIN_KEY:
+    if not ADMIN_KEY or not hmac.compare_digest(admin_key, ADMIN_KEY):
         return templates.TemplateResponse(
             "admin/login.html",
             {"request": request, "error": "Invalid admin key."},
@@ -139,12 +139,14 @@ async def api_stats(
     except Exception:
         pass
 
-    # Worker count — arq workers write heartbeat keys
+    # Worker count — arq workers write heartbeat keys (use SCAN to avoid O(N) KEYS)
     worker_count = 0
     try:
         r = get_redis_pool()
-        keys = await r.keys("arq:health-check:*")
-        worker_count = len(keys)
+        count = 0
+        async for _ in r.scan_iter("arq:health-check:*"):
+            count += 1
+        worker_count = count
     except Exception:
         pass
 
