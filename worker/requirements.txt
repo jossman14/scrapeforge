@@ -9,7 +9,6 @@ playwright==1.49.1
 markdownify==0.14.1
 trafilatura==2.0.0
 instructor==1.7.0
-openai==1.59.0
+openai>=1.59.2,<1.60.0
 structlog==24.4.0
-robotparser2==1.0.0
 arq==0.26.1

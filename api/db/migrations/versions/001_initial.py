@@ -29,7 +29,12 @@ def upgrade() -> None:
     # Enable pg_stat_statements for query observability.
     # Requires shared_preload_libraries in postgresql.conf — safe to create
     # even if not yet active; will take effect after PostgreSQL restart.
-    op.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+    # NOTE: CockroachDB does not support CREATE EXTENSION at all (unimplemented
+    # feature). Skip on non-PostgreSQL dialects (deployment change, see pm2
+    # migration notes) instead of failing the whole migration.
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
 
     # ------------------------------------------------------------------
     # api_keys
@@ -288,4 +293,6 @@ def downgrade() -> None:
     op.drop_table("job_results")
     op.drop_table("jobs")
     op.drop_table("api_keys")
-    op.execute("DROP EXTENSION IF EXISTS pg_stat_statements")
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("DROP EXTENSION IF EXISTS pg_stat_statements")

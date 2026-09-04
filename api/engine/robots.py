@@ -10,12 +10,14 @@ import logging
 import urllib.robotparser
 from urllib.parse import urlparse
 
-import httpx
 import redis.asyncio as aioredis
+
+from api.engine.safe_http import safe_get_async
 
 log = logging.getLogger(__name__)
 
 _TTL = 3600  # 1 hour
+_MAX_ROBOTS_BYTES = 512 * 1024  # robots.txt is never legitimately larger
 
 
 def _domain_key(url: str) -> str:
@@ -55,10 +57,16 @@ async def is_allowed(url: str, redis: aioredis.Redis, user_agent: str = "*") -> 
 async def _fetch_robots(url: str) -> str:
     robots_url = _robots_url(url)
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.get(robots_url, headers={"User-Agent": "ScrapeForge/1.0"})
-            if resp.status_code == 200:
-                return resp.text
+        # Guarded fetch: robots.txt is requested for attacker-supplied hosts on
+        # every crawl hop, so it is an SSRF sink in its own right.
+        resp = await safe_get_async(
+            robots_url,
+            headers={"User-Agent": "ScrapeForge/1.0"},
+            timeout=10.0,
+            max_bytes=_MAX_ROBOTS_BYTES,
+        )
+        if resp.status_code == 200:
+            return resp.text
     except Exception as exc:
         log.debug("robots_fetch_error url=%s error=%s", robots_url, exc)
     return ""

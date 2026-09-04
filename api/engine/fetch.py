@@ -16,6 +16,9 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from api.engine.safe_http import MAX_RESPONSE_BYTES, safe_get
+from api.engine.url_validator import BlockedURLError, validate_url, validate_url_sync
+
 log = logging.getLogger(__name__)
 
 _PLAYWRIGHT_URL = os.environ.get("PLAYWRIGHT_URL", "http://playwright:3000/render")
@@ -45,9 +48,20 @@ class FetchOptions:
 
 
 async def fetch_with_fallback(url: str, options: FetchOptions | None = None) -> FetchResult:
-    """3-tier fallback chain. Returns the first successful result."""
-    opts = options or FetchOptions()
+    """3-tier fallback chain. Returns the first successful result.
 
+    A URL rejected by the SSRF guard (at any tier, including on a redirect hop)
+    aborts the whole chain — it must never be retried with a different engine.
+    """
+    opts = options or FetchOptions()
+    try:
+        return await _fetch_chain(url, opts)
+    except BlockedURLError as exc:
+        log.warning("fetch_blocked url=%s reason=%s", url, exc)
+        return FetchResult(error=str(exc), is_blocked=True, fetch_strategy="blocked")
+
+
+async def _fetch_chain(url: str, opts: FetchOptions) -> FetchResult:
     # Tier 1: Scrapling static Fetcher
     result = await _fetch_static(url, opts)
     log.info("fetch_tier=static url=%s status=%d empty=%s", url, result.status_code, result.is_empty)
@@ -74,57 +88,63 @@ async def fetch_with_fallback(url: str, options: FetchOptions | None = None) -> 
 
 
 async def _fetch_static(url: str, opts: FetchOptions) -> FetchResult:
-    """Scrapling Fetcher — sync, so we run it in a thread."""
+    """Tier 1 — sync guarded fetch, so we run it in a thread."""
     try:
         result = await asyncio.to_thread(_scrapling_static, url, opts)
         return result
+    except BlockedURLError:
+        raise  # SSRF guard — must abort the chain, never fall through to tier 2
     except Exception as exc:
         log.warning("static_fetch_error url=%s error=%s", url, exc)
         return FetchResult(error=str(exc), is_js_required=True)
 
 
-def _scrapling_static(url: str, opts: FetchOptions) -> FetchResult:
-    """Synchronous Scrapling Fetcher call (runs in thread pool)."""
+def _stealth_headers(url: str, opts: FetchOptions) -> dict[str, str]:
+    """Scrapling's browser-like headers, without ceding transport control."""
+    headers: dict[str, str] = {"User-Agent": opts.user_agent}
     try:
-        from scrapling.fetchers import Fetcher
-        fetcher = Fetcher(auto_match=True)
-        page = fetcher.get(url, timeout=opts.timeout, stealthy_headers=True)
-        html = page.html_content or ""
-        status = page.status or 200
+        from scrapling.engines.toolbelt import generate_convincing_referer, generate_headers
+        headers.update(generate_headers(browser_mode=False))
+        headers["referer"] = generate_convincing_referer(url)
+    except Exception as exc:  # scrapling missing or API changed — headers are optional
+        log.debug("stealth_headers_unavailable url=%s error=%s", url, exc)
+    return headers
 
-        is_js = _looks_js_heavy(html)
-        is_blocked = _looks_blocked(html, status)
 
-        return FetchResult(
-            html=html,
-            status_code=status,
-            is_js_required=is_js,
-            is_blocked=is_blocked,
-        )
-    except ImportError:
-        return _httpx_fallback_static(url, opts)
-    except Exception as exc:
-        log.warning("scrapling_static_error url=%s error=%s", url, exc)
-        return _httpx_fallback_static(url, opts)
+def _scrapling_static(url: str, opts: FetchOptions) -> FetchResult:
+    """Synchronous static fetch (runs in thread pool).
+
+    Uses Scrapling's stealth header generation but performs the request through
+    :func:`api.engine.safe_http.safe_get`, so the connection is DNS-pinned,
+    every redirect hop is re-validated and the body is size-capped.  Handing the
+    URL to Scrapling's own httpx client would follow redirects unchecked.
+    """
+    return _httpx_fallback_static(url, opts)
 
 
 def _httpx_fallback_static(url: str, opts: FetchOptions) -> FetchResult:
-    """httpx-based fallback when scrapling is unavailable."""
-    import httpx as _httpx
+    """Guarded httpx GET: validated + pinned + redirect-checked + size-capped."""
     try:
-        with _httpx.Client(timeout=opts.timeout, follow_redirects=True) as client:
-            resp = client.get(url, headers={"User-Agent": opts.user_agent})
-            html = resp.text
-            is_js = _looks_js_heavy(html)
-            is_blocked = _looks_blocked(html, resp.status_code)
-            return FetchResult(
-                html=html,
-                status_code=resp.status_code,
-                is_js_required=is_js,
-                is_blocked=is_blocked,
-            )
+        resp = safe_get(
+            url,
+            headers=_stealth_headers(url, opts),
+            timeout=opts.timeout,
+            max_bytes=MAX_RESPONSE_BYTES,
+        )
+    except BlockedURLError:
+        raise
     except Exception as exc:
         return FetchResult(error=str(exc), is_js_required=True)
+
+    html = resp.text
+    if resp.truncated:
+        log.warning("static_response_truncated url=%s limit=%d", url, MAX_RESPONSE_BYTES)
+    return FetchResult(
+        html=html,
+        status_code=resp.status_code,
+        is_js_required=_looks_js_heavy(html),
+        is_blocked=_looks_blocked(html, resp.status_code),
+    )
 
 
 async def _fetch_stealthy(url: str, opts: FetchOptions) -> FetchResult:
@@ -132,31 +152,51 @@ async def _fetch_stealthy(url: str, opts: FetchOptions) -> FetchResult:
     try:
         result = await asyncio.to_thread(_scrapling_stealthy, url, opts)
         return result
+    except BlockedURLError:
+        raise
     except Exception as exc:
         log.warning("stealthy_fetch_error url=%s error=%s", url, exc)
         return FetchResult(error=str(exc), is_blocked=True)
 
 
 def _scrapling_stealthy(url: str, opts: FetchOptions) -> FetchResult:
-    """Synchronous StealthyFetcher call."""
+    """Synchronous StealthyFetcher call.
+
+    Tier 2 drives a real browser, so we cannot pin its socket or intercept its
+    redirects.  We therefore validate before handing the URL over and validate
+    the browser's *final* URL afterwards, so content fetched from an internal
+    service is discarded instead of being persisted and returned.
+    """
+    validate_url_sync(url)
+
     try:
         from scrapling.fetchers import StealthyFetcher
-        fetcher = StealthyFetcher(auto_match=True)
-        page = fetcher.fetch(url, timeout=opts.timeout * 1000)
-        html = page.html_content or ""
-        status = page.status or 200
-        is_blocked = _looks_blocked(html, status)
-        return FetchResult(html=html, status_code=status, is_blocked=is_blocked)
     except ImportError:
         log.warning("StealthyFetcher not available, skipping tier 2")
         return FetchResult(is_blocked=True)
+
+    try:
+        fetcher = StealthyFetcher(auto_match=True)
+        page = fetcher.fetch(url, timeout=opts.timeout * 1000)
     except Exception as exc:
         log.warning("stealthy_error url=%s error=%s", url, exc)
         return FetchResult(error=str(exc), is_blocked=True)
 
+    final_url = str(getattr(page, "url", "") or url)
+    if final_url != url:
+        validate_url_sync(final_url)  # raises BlockedURLError -> chain aborts
+
+    html = (page.html_content or "")[:MAX_RESPONSE_BYTES]
+    status = page.status or 200
+    return FetchResult(html=html, status_code=status, is_blocked=_looks_blocked(html, status))
+
 
 async def _fetch_playwright(url: str, opts: FetchOptions) -> FetchResult:
     """Call the Playwright microservice for JS-heavy pages."""
+    # The microservice endpoint itself is operator-configured, but the target
+    # URL is attacker-influenced — validate it before it leaves this process.
+    await validate_url(url)
+
     payload = {"url": url}
     if opts.wait_for:
         payload["waitFor"] = opts.wait_for
@@ -165,7 +205,7 @@ async def _fetch_playwright(url: str, opts: FetchOptions) -> FetchResult:
         async with httpx.AsyncClient(timeout=opts.timeout + 15) as client:
             resp = await client.post(_PLAYWRIGHT_URL, json=payload)
             resp.raise_for_status()
-            html = resp.json().get("html", "")
+            html = (resp.json().get("html", "") or "")[:MAX_RESPONSE_BYTES]
             return FetchResult(html=html, status_code=200)
     except Exception as exc:
         log.error("playwright_fetch_error url=%s error=%s", url, exc)

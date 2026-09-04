@@ -24,6 +24,7 @@ async def task_crawl(ctx: dict, job_id: str) -> None:
     from api.engine.fetch import FetchOptions, fetch_with_fallback
     from api.engine.convert import html_to_markdown, extract_links
     from api.engine.robots import is_allowed
+    from api.engine.url_validator import validate_url
 
     result = await session.execute(select(Job).where(Job.id == UUID(job_id)))
     job: Job | None = result.scalar_one_or_none()
@@ -79,6 +80,18 @@ async def task_crawl(ctx: dict, job_id: str) -> None:
             current_url = entry.url
             visited.add(current_url)
 
+            # SSRF guard: frontier URLs come from attacker-controlled HTML and
+            # allow_external disables the domain filter, so every URL is
+            # re-validated here — before robots.txt and before the fetch.
+            try:
+                await validate_url(current_url)
+            except ValueError as exc:
+                log.warning("crawl_blocked_ssrf url=%s reason=%s", current_url, exc)
+                entry.status = "skipped"
+                entry.processed_at = datetime.now(timezone.utc)
+                await session.commit()
+                continue
+
             # robots check
             if respect_robots and not await is_allowed(current_url, redis):
                 log.info("crawl_skipped disallowed url=%s", current_url)
@@ -115,6 +128,12 @@ async def task_crawl(ctx: dict, job_id: str) -> None:
                 if include_paths and not any(p in parsed.path for p in include_paths):
                     continue
                 if exclude_paths and any(p in parsed.path for p in exclude_paths):
+                    continue
+                # SSRF guard before the link ever enters the frontier.
+                try:
+                    await validate_url(link)
+                except ValueError as exc:
+                    log.warning("crawl_link_rejected url=%s reason=%s", link, exc)
                     continue
                 # Use insert-or-ignore to respect UNIQUE constraint
                 await session.execute(

@@ -9,7 +9,6 @@ import logging
 from urllib.parse import urljoin, urlparse
 import defusedxml.ElementTree as ElementTree
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import AnyHttpUrl, BaseModel, Field
 
@@ -17,11 +16,14 @@ from api.auth.rate_limit import check_rate_limit
 from api.db.models import ApiKey
 from api.engine.fetch import FetchOptions, _fetch_static
 from api.engine.convert import extract_links
+from api.engine.safe_http import safe_get_async
 from api.engine.url_validator import validate_url
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1", tags=["map"])
+
+_MAX_SITEMAP_BYTES = 10 * 1024 * 1024
 
 
 class MapRequest(BaseModel):
@@ -80,15 +82,20 @@ async def _parse_sitemap(base_url: str) -> list[str]:
     sitemap_url = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
 
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            resp = await client.get(sitemap_url, headers={"User-Agent": "ScrapeForge/1.0"})
-            if resp.status_code != 200:
-                return []
+        # Guarded fetch: sitemap host is attacker-supplied (map/crawl seed).
+        resp = await safe_get_async(
+            sitemap_url,
+            headers={"User-Agent": "ScrapeForge/1.0"},
+            timeout=10.0,
+            max_bytes=_MAX_SITEMAP_BYTES,
+        )
+        if resp.status_code != 200:
+            return []
 
-            root = ElementTree.fromstring(resp.text)
-            ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-            urls = [loc.text for loc in root.findall(".//sm:loc", ns) if loc.text]
-            return urls
+        root = ElementTree.fromstring(resp.text)
+        ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        urls = [loc.text for loc in root.findall(".//sm:loc", ns) if loc.text]
+        return urls
     except Exception as exc:
         log.debug("sitemap_parse_error url=%s error=%s", sitemap_url, exc)
         return []
